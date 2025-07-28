@@ -1,0 +1,17 @@
+{
+  "name":"姓名",
+  "gender":"性别",
+  "nationality":"民族",
+  "phone":"电话号码",
+  "id_card":"身份证号",
+  "native_place":"籍贯",
+  "birth":"生日",
+  "email":"电子邮箱",
+  "career":"职业",
+  "address":"地址",
+  "hukou":"户口",
+  "political_status":"政治面貌",
+  "marital_status":"婚姻状况",
+  "religion":"宗教",
+  "education":"学历"
+}

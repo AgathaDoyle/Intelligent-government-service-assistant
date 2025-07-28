@@ -9,18 +9,20 @@ import http.server as httpserver
 from user import User,TableFiller,UserAsyncModel,AsyncFaceLooper
 
 from server.console import log
-from server.cipher import AESCipher
+from server.cipher import AESCipher,ChiperBase
+from lang import translate
 
 __all__=['run']
 
 
-host="192.168.1.229"
+host="192.168.1.230"
 port=10925
 ip=host+":"+str(port)
 
 flow_dic = {}
 hash_obj = hashlib.sha256()
-aes_cipher = AESCipher("1234567890123456")
+#aes_cipher = AESCipher("1234567890123456")
+aes_cipher = ChiperBase()
 
 face_process = AsyncFaceLooper()
 face_process.run_loop_on_new_thread()
@@ -29,20 +31,26 @@ face_process.run_loop_on_new_thread()
 
 
 
-
-
 class Handler(http.server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
     def do_GET(self):
         return
     def do_POST(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Type', 'application/json')
         self.end_headers()
         # 请求内容长度
         content_length = int(self.headers.get("Content-Length", 0))
 
         # 请求内容
         request = json.loads(aes_cipher.base64_de_str(self.rfile.read(content_length).decode("utf8")))
+        print(request)
         self.wfile.write(aes_cipher.str_en_base64(json.dumps(self.respond(request),ensure_ascii=False)).encode("utf8"))
         self.wfile.flush()
 
@@ -51,6 +59,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         response = {
             "user_id": user_id,
             "type": "processing",
+            "hash": flow_hash,
+        }
+        return response
+    def error_response(self,user_id,flow_hash):
+        log("\"%s\" is request but error"%(user_id))
+        response = {
+            "user_id": user_id,
+            "type": "error",
             "hash": flow_hash,
         }
         return response
@@ -67,7 +83,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "type": "busy",
             "hash": request["hash"],
         }
-        #预测用户
+        #预测用户人脸
         if req_type == "face" and request["input"]["type"] == "predict":
             imgs = [base64.b64decode(img) for img in request["input"]["imgs"]]
 
@@ -96,6 +112,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             user = flow_dic[user_id]
             user.run_on_new_thread(request["input"]["text"])
+
+
         # 获取用户
         user = flow_dic[user_id]
         # 在握手前使用，报错

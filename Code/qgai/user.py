@@ -8,6 +8,7 @@ import inquiry
 import datamining
 import classify
 import face
+from lang import translate,detranslate
 
 __all__=['User','TableFiller','UserAsyncModel','AsyncFaceLooper']
 
@@ -243,7 +244,10 @@ class User:
         """
         once_tb = self.once_info
         once_tb.update(self.main_info)
-        return once_tb
+        res = {}
+        for key in once_tb:
+            res[translate(key)]=once_tb[key]
+        return res
 
     @property
     def main_info(self):
@@ -312,7 +316,8 @@ class User:
         :return: 返回一个填完的表格
         """
         for key in table:
-            if table[key] is not None:
+            #跳过已填的值
+            if not table[key] == '':
                 continue
             #遍历特殊标记
             for mark in datamining.table_mark:
@@ -322,9 +327,7 @@ class User:
             #如果有对应的键值，填充表格
             if key in self.info:
                 table[key]=self.info[key]
-            elif key in default_nes_info:
-                table[key]=default_nes_info[key]
-
+        print(table)
         return table
 
 
