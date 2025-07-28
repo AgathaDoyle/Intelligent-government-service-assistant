@@ -1,10 +1,10 @@
 import json
 import os
 
-from datamining.deal_flow_api import deal_flow_a
+from datamining.deal_flow_api1 import deal_flow_a
 from datamining.deal_flow_local import deal_flow_l
-from server.console import log
-# from deal_flow_api import deal_flow_a
+# from server.console import log
+# from deal_flow_api1 import deal_flow_a
 # from deal_flow_local import deal_flow_l
 
 
@@ -91,7 +91,7 @@ class DataMiningAgent:
         user_info = self.anonymize_user_data(user_info)
         if mod == 'remote':
             try:
-                flow = deal_flow_a(user_info, self.get_org_flow(idx))
+                flow = deal_flow_a(user_info, self.get_org_flow(idx), cat_gril=cat_mode)
                 return flow
             except KeyError:
                 return '-1'

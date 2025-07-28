@@ -18,6 +18,7 @@ def deal_flow_a(user_input, raw_text: str, cat_gril=False) -> str:
     调用华为云的 deepseekAPI 处理流程
     :param user_input: 用户信息
     :param raw_text: 原始流程
+    :param cat_gril:
     :return: 最终流程
     """
     url = "https://maas-cn-southwest-2.modelarts-maas.com/v1/infers/271c9332-4aa6-4ff5-95b3-0cf8bd94c394/v1/chat/completions"
