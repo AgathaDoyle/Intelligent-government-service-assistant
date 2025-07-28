@@ -5,13 +5,14 @@ import { message } from "antd";
 
 const ManagerRouter = ({ children }) => {
   const user = localStorage.getItem("user");
-
+  console.log("ManagerRouter user:", user);
+  return children;
   if (user === null) {
+    console.log("用户未登录");
     message.error("请先登录");
     return <Navigate to="/" replace />;
   }
 
-  return children;
 };
 
 export default ManagerRouter;

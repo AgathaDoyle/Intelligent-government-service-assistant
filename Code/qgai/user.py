@@ -10,7 +10,7 @@ import classify
 import face
 from lang import translate,detranslate
 
-__all__=['User','TableFiller','UserAsyncModel','AsyncFaceLooper']
+__all__=['User','TableFiller','UserAsyncModel', 'AsyncPredictLooper']
 
 
 class TableFiller:
@@ -30,7 +30,7 @@ class TableFiller:
         返回当前所填表
         :return:
         """
-        return self.__tables[self.__index]
+        return self.__tables[self.__pointer]
 
     @table.setter
     def table(self, table):
@@ -39,7 +39,7 @@ class TableFiller:
         :param table: 修改内容
         :return:
         """
-        self.__tables[self.__index] = table
+        self.__tables[self.__pointer] = table
 
     @property
     def tables(self):
@@ -51,7 +51,7 @@ class TableFiller:
 
     @property
     def is_finish(self):
-        return self.__pointer==len(self.__tables)
+        return self.__pointer>=len(self.__tables)
 
     @property
     def bussiness_type(self):
@@ -78,7 +78,7 @@ class TableFiller:
         导出当前所填表，并将pointer换到下一张表
         :return:
         """
-        table = self.__tables[self.__index]
+        table = self.__tables[self.__pointer]
         self.__pointer+=1
 
         return table
@@ -90,7 +90,7 @@ class UserAsyncModel:
     """
     processing = -2147483648
 
-    def __init__(self, task,loop,wait_time=0.5):
+    def __init__(self, task,loop,wait_time=5):
         """
         创建一个异步操作模块
         :param task: 一个函数，必须为async的异步函数
@@ -151,7 +151,7 @@ default_main_info.update(default_adt_info)
 
 class User:
 
-    def __init__(self, info_dic: dict,just_face = False):
+    def __init__(self, info_dic: dict):
         """
         初始化一个用户
         :param info_dic: 数据库中保存的所有的信息，包含所有必要信息和已有的基本信息
@@ -189,19 +189,15 @@ class User:
         self.__predict_face_res=UserAsyncModel(self.__predict_face,self.__loop)
 
 
-
         #进程锁
         self.__process_block = None
-
-
-        if just_face:
-            return
 
 
         #检查必要信息
         for key in default_nes_info:
             if key not in info_dic:
-                raise Exception("Missing necessary information")
+                a=1
+                # raise Exception("Missing necessary information")
 
         #检查多于信息
         return
@@ -242,11 +238,12 @@ class User:
         用户的所有信息
         :return:
         """
-        once_tb = self.once_info
+        once_tb = self.once_info.copy()
         once_tb.update(self.main_info)
         res = {}
         for key in once_tb:
-            res[translate(key)]=once_tb[key]
+            zhcn = translate(key)
+            res[zhcn if zhcn is not None else key]=once_tb[key]
         return res
 
     @property
@@ -355,8 +352,9 @@ class User:
         """
         print("inquire")
         self._check_init()
-
-        question = inquiry.Inquiring(self.tables_filler.table)
+        if self.tables_filler.is_finish:
+            return None
+        question = inquiry.inquire(self.tables_filler.table)
         if question is None:
             return None
         return list(question.keys())[0],list(question.values())[0]         #key,sentence
@@ -383,7 +381,7 @@ class User:
         :return: 提取的关键字
         """
         print("get_answer")
-        return inquiry.Get_Answer(text, key)
+        return inquiry.get_answer(text, key)
     @property
     def get_answer(self)->UserAsyncModel:
         """
@@ -464,8 +462,8 @@ class User:
     def activate(self,require):
         asyncio.set_event_loop(self.__loop)
         self.__process_block = asyncio.Event()
-        self.__loop.run_until_complete(self.__activate(require))
-        self.__loop.close()
+        asyncio.run_coroutine_threadsafe(self.__activate(require),self.__loop)
+        self.__loop.run_forever()
 
 
     async def __activate(self, require):
@@ -491,6 +489,7 @@ class User:
             await self._waiter.wait()
             self._waiter.clear()
 
+        await self._waiter.wait()
         return True
 
     def run_on_new_thread(self,require):
@@ -507,7 +506,7 @@ class AsyncLooper:
         return self.__async_models[id]
 
     def __contains__(self,id)->bool:
-        return id in self.__async_models
+        return (id in self.__async_models)
 
     def __delitem__(self, id):
         del self.__async_models[id]
@@ -524,10 +523,18 @@ class AsyncLooper:
         threading.Thread(target=self.run_loop).start()
 
 
-class AsyncFaceLooper(AsyncLooper):
+class AsyncPredictLooper(AsyncLooper):
     def __init__(self):
-        super().__init__(AsyncFaceLooper.async_predict_face)
+        super().__init__(AsyncPredictLooper.async_predict_face)
 
     @staticmethod
     async def async_predict_face(imgs_bin)->Optional[str]:
         return face.cv2_predict(imgs_bin)
+
+class AsyncTrainLooper(AsyncLooper):
+    def __init__(self):
+        super().__init__(AsyncTrainLooper.async_train_face)
+
+    @staticmethod
+    async def async_train_face(user_id,imgs_bin) -> Optional[str]:
+        return face.cv2_train(imgs_bin,user_id)

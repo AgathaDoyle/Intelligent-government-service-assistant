@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Progress, message, Alert } from "antd";
+import { useSelector, useDispatch } from "react-redux";
 import style from "./Collect.module.css";
 import api from "../api/index.js";
+import { formDataImagesToBase64Json } from "../utils/func.js";
+import { faceCollect } from "../api/userservice/user.js";
+import { getUserById } from "../store/slice/userSlice.js";
+import { useNavigate } from "react-router-dom";
 
 const Collect = () => {
   const videoRef = useRef(null);
@@ -9,8 +14,11 @@ const Collect = () => {
   const [collecting, setCollecting] = useState(false);
   const [capturedImages, setCapturedImages] = useState([]);
   const [progress, setProgress] = useState(0);
-  const maxImages = 100;
-  const intervalTime = 5000; // 5秒间隔
+  const maxImages = 50;
+  const intervalTime = 50; // 5秒间隔
+  const userId = useSelector((state) => state.user.id);
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   // const [message, setMessage] = useState({
   //   userId: 100,
@@ -42,18 +50,35 @@ const Collect = () => {
   //上传所有图片
   const uploadAllImages = async () => {
     const formData = new FormData();
+    //将当前的用户id添加到formData中
     capturedImages.forEach((blob, index) => {
       formData.append("images", blob, `image_${index}.png`);
     });
 
     try {
-      const response = await api.post("/upload", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+      const base64Images = await formDataImagesToBase64Json(formData);
+      const encryptedImages = base64Images.map((base64Str) => {
+        // 确保 base64Str 是一个字符串。formDataImagesToBase64Json 应该返回字符串。
+        // 如果它可能返回其他类型，请在此处进行转换，例如 String(base64Str)
+        // return encryptData(base64Str);
+        return base64Str; // 这里假设 base64Str 已经是加密的字符串
       });
+      const payload = {
+        user_id: userId,   //userId
+        type: "face",
+		hash: "123123123",
+        input: {
+          type: "train",
+          imgs: encryptedImages,
+        },
+      };
+	  console.log(payload)
+      const response = await faceCollect(payload);
+      console.log("批量上传响应：", response);
+
       console.log("批量上传成功", response.data);
       message.success("全部图片上传成功！");
+      setCapturedImages([]); // 清空已采集的图片
     } catch (error) {
       console.error("批量上传失败", error);
       message.error("批量上传失败！");
@@ -85,7 +110,7 @@ const Collect = () => {
 
   const captureImage = () => {
     const context = canvasRef.current.getContext("2d");
-    context.drawImage(videoRef.current, 0, 0, 320, 240);
+    context.drawImage(videoRef.current, 0, 0, 1200, 768);
 
     canvasRef.current.toBlob((blob) => {
       if (!blob) {
@@ -134,14 +159,14 @@ const Collect = () => {
       <div className={style.container}>
         <video
           ref={videoRef}
-          width="320"
-          height="240"
+          width="1200"
+          height="768"
           style={{ border: "1px solid #ccc" }}
         />
         <canvas
           ref={canvasRef}
-          width="320"
-          height="240"
+          width="1200"
+          height="768"
           style={{ display: "none" }}
         />
         <div>

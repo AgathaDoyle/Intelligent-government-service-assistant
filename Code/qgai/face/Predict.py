@@ -8,9 +8,9 @@
 import cv2
 import joblib
 import numpy as np
-from model_loader import get_components
+from face.model_loader import get_components
 
-from utils.face_utils import (
+from face.utils.face_utils import (
     bin_to_image_array, preprocess_face, extract_features,
     detect_largest_face, normalize_features, img_to_bin
 )
@@ -110,6 +110,9 @@ def cv2_predict(imgs_bin, min_acc=0.6):
         if res is not None:
             valid_results.append((str(res), float(conf.strip('%'))))
     logger.info(f"识别到 {len(valid_results)} 个有效人脸数据，开始预测")
+
+    if len(valid_results) == 0:
+        return None
 
     # 构建标签到置信度列表的映射
     for label, conf in valid_results:

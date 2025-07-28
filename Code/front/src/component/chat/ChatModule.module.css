@@ -20,15 +20,16 @@
 .title {
   font-size: 28px;
   font-weight: 600;
-  color: #333;
+  /* color: #333; */
+  animation: colorJump 5s infinite;
   margin-bottom: 40px;
   text-align: center;
   cursor: pointer;
 }
 
-.title:hover {
+/* .title:hover {
   animation: colorJump 5s infinite;
-}
+} */
 
 @keyframes colorJump {
   0% {
