@@ -48,4 +48,4 @@ type_dic={
 }
 
 
-print(classify("我该上哪里去办理身份证",type_dic))
+#print(classify("我该上哪里去办理身份证",type_dic))

@@ -18,9 +18,11 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 const { Text } = Typography;
-import { loginUser } from "../../store/slice/userSlice.js";
+import { getUserById, loginUser } from "../../store/slice/userSlice.js";
 import { useDispatch } from "react-redux";
 import { faceLogin } from "../../api/userservice/user.js";
+import { encryptData } from "../../utils/encrypt.js";
+import { formDataImagesToBase64Json } from "../../utils/func.js";
 
 const MAX_ATTEMPTS = 10;
 
@@ -36,9 +38,20 @@ const LoginForm = () => {
   const handleAccountLogin = async (values) => {
     setLoading(true);
     try {
-      const result = await dispatch(loginUser(values)).unwrap();
-      console.log("登录成功", result.payload);
-      message.success(`登录成功，欢迎 ${result.data.name}`);
+      console.log("登录信息：", values);
+      const result = await dispatch(
+        loginUser({
+          identity: encryptData(values.identity, "1234567890123456"), // Make sure your encryption key is consistent here! "HHH" is too short.
+          password: encryptData(values.password, "1234567890123456"), // Use the full 16-byte key
+        })
+      ).unwrap();
+
+      // --- Corrected Lines ---
+      // 'result' itself is the decrypted user object from the Redux thunk
+      console.log("登录成功", result); // Changed from result.payload to result
+      message.success(`登录成功，欢迎 ${result.name}`); // Changed from result.data.name to result.name
+      // --- End Corrected Lines ---
+
       navigate("/Home");
     } catch (error) {
       message.error("登录失败");
@@ -118,23 +131,37 @@ const LoginForm = () => {
     } catch (error) {
       message.error("摄像头初始化失败：" + error.message);
     }
-
+    var flow_hash = ""
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       const blob = await takePhotoBlob();
       console.log(`第${attempt}次尝试识别人脸...`);
       const formData = new FormData();
-      formData.append("image", blob, "face.jpg");
-
+      formData.append("images", blob, "face.jpg");
       try {
-        const result = await faceLogin(formData);
+        const base64Images = await formDataImagesToBase64Json(formData);
+        const encryptedImages = base64Images.map((base64Str) => {
+          // 确保 base64Str 是一个字符串。formDataImagesToBase64Json 应该返回字符串。
+          // 如果它可能返回其他类型，请在此处进行转换，例如 String(base64Str)
+          // return encryptData(base64Str);
+          return base64Str; // 这里假设 base64Str 已经是加密的字符串
+        });
+        const payload = {
+          user_id: null,
+          type: "face",
+		  hash: flow_hash,
+          input: {
+            type: "predict",
+            imgs: encryptedImages,
+          },
+        };
+        const result = await faceLogin(payload);
+		console.log(result)
+		if (result.output.user_id!=null)message.success(result.output.user_id)
+        flow_hash = result.hash
+        //todo 这里可能因为返回的数据为空识别为失败，一直当错误了
         console.log(`第${attempt}次识别结果：`, result);
-        if (result.code === 200) {
-          success = true;
-          message.success("人脸识别登录成功");
-          break;
-        } else {
-          console.log(`第${attempt}次失败，重试中...`);
-        }
+        // dispatch(getUserById(result.data?.user_id));
+        dispatch(getUserById(result.user_id));
       } catch (error) {
         console.error(`第${attempt}次请求失败`, error);
       }

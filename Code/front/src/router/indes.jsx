@@ -24,7 +24,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "/collect",
-        element: <Collect />,
+        element: (
+          <ManagerRouter>
+            <Collect />
+          </ManagerRouter>
+        ),
       },
     ],
   },

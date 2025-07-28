@@ -6,17 +6,23 @@ import {
   AudioMutedOutlined,
 } from "@ant-design/icons";
 import styles from "./ChatModule.module.css";
-import { changeUserData, getUserInfo } from "../../api/userservice/user.js";
-import { useSelector } from "react-redux";
-import qg from "../../assets/qg.png";
-
+import { sendMessage, receiveMessages } from "../../api/userservice/chat.js";
+// import { encrypt } from "../../component/secret/encrypt.js";
 const { TextArea } = Input;
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
+import { encryptData } from "../../utils/encrypt.js";
+
+let key = ""//暂存key
+let flow = ""//暂存flow
 
 const ChatModule = ({ onSend, initialMessages = [], getTitle }) => {
-  const [messages, setMessages] = useState(initialMessages);
+  // const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [activated, setActivated] = useState(initialMessages.length > 0);
+  // const [activated, setActivated] = useState(initialMessages.length > 0);
+  const [activated, setActivated] = useState(false);
   const messageEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const scrollRef = useRef(null);
@@ -98,25 +104,137 @@ const ChatModule = ({ onSend, initialMessages = [], getTitle }) => {
   // 发送消息
 
   const handleSend = async () => {
+    setIsSending(true); // 禁用发送
+    if (recognitionRef.current != null) recognitionRef.current.stop(); // 停止语音识别
     if (input.trim()) {
       const newMessage = {
         content: input.trim(),
         role: "user",
         timestamp: new Date(),
       };
-
-      setMessages((prev) => [...prev, newMessage]);
-
+	  
+	  setInput("");
       //如果为第一条信息，则调用getTitle函数
       if (messages.length === 0) {
         getTitle(newMessage.content);
+		//发送信息
+		try {
+		  //! 记得加密解密
+		  setActivated(true);
+		  setMessages((prev) => [...prev, newMessage]);
+		  const id = user.id;
+		  delete user.id; // 删除id字段
+		  const response = await sendMessage({
+		    user_id: id,
+		    info: {
+				name:user.name,
+				gender:user.gender,
+				nationality:user.nationality,
+				phone:user.phone,
+				id_card:user.idCard
+			},
+			type: "handshake",
+		    input: { type: "text", text: newMessage.content },
+		  });
+		  user.id = id; // 恢复id字段
+		  flow = response.flow;
+		  //这里注意ai返回的信息格式
+		} catch (error) {
+		  message.error("发送信息失败，请稍后重试");
+		  setMessages((prev) => [
+		    ...prev,
+		    {
+		      content: "发送失败，请稍后重试",
+		      role: "assistant",
+		      timestamp: new Date(),
+		    },
+		  ]);
+		}
       }
+	  else
+	  {
+		  console.log(2)
+		  //用户回答
+		  try {
+		    //! 记得加密解密
+		    setActivated(true);
+		    setMessages((prev) => [...prev, 
+			{
+				content: input.trim(),
+				role: "user",
+				timestamp: new Date(),
+			}]);
+		    const response = await sendMessage({
+		      user_id: user.id,
+			  type: "answer",
+			  input: {
+				  type: "text",
+				  text: newMessage.content,
+				  key: key
+			  }
+		    });
+			newMessage.content = response.output.value
+		    setMessages((prev) => [...prev, {
+				content: response.output.value,
+				role: "user",
+				timestamp: new Date(),
+				
+			}]);
+		  setIsSending(false);
+		  } catch (error) {
+		  	console.log(error)
+		    message.error("发送信息失败，请稍后重试");
+		    setMessages((prev) => [
+		      ...prev,
+		      {
+		        content: "发送失败，请稍后重试",
+		        role: "assistant",
+		        timestamp: new Date(),
+		      },
+		    ]);
+		    setIsSending(false);
+		  }
+	  }
+	  //get inquire
+	  try{
+		  console.log(22)
+		setActivated(true);
+		const response = await sendMessage({
+		  user_id: userId,
+		  type: "question",
+		  
+		});
+		setIsSending(false);
+		if (response.output.type == null) 
+		{
+		  console.log(32)
+			await summeryData(user.id);
+		}
+		key = response.output.key;
+		setMessages((prev) => [
+		  ...prev,
+		  { 
+			content: response.output.text, 
+			role: "assistant",
+		    timestamp: new Date() 
+		  },
+		]);
+		
+	  }catch (error) {
+		  return
+	    message.error("发送信息失败，请稍后重试");
+	    setMessages((prev) => [
+	      ...prev,
+	      {
+	        content: "发送失败，请稍后重试",
+	        role: "assistant",
+	        timestamp: new Date(),
+	      },
+	    ]);
+	  }
+	  
+	  console.log("发送信息：", newMessage.content);
 
-      // 调用外部onSend回调
-      if (onSend) {
-        onSend(newMessage);
-        // pollForAIResponse();
-      }
       // try {
       //   await changeUserData({
       //     name: "linlinlin1",
@@ -135,47 +253,117 @@ const ChatModule = ({ onSend, initialMessages = [], getTitle }) => {
       //   console.error("获取用户信息失败", error);
       // }
 
-      setInput("");
-      setActivated(true);
-      setIsSending(true); // 禁用发送
-
       //轮询获取回复
-      pollForAIResponse();
+      // pollForAIResponse(hash);
     }
   };
-
-  const pollForAIResponse = () => {
-    let retries = 0;
-    const maxRetries = 10;
-    const interval = 1500;
-
-    const poller = setInterval(() => {
-      retries++;
-
-      // 模拟 AI 返回内容（你可以替换为实际 fetch 请求）
-      const mockAIResponse = {
-        content: "这是AI的回复内容。",
-        role: "assistant",
-        timestamp: new Date(),
-      };
-
-      // 模拟第3次轮询收到回复
-      if (retries === 3) {
-        clearInterval(poller);
-        setMessages((prev) => [...prev, mockAIResponse]);
-        setIsSending(false); // 启用发送按钮
-
-        // ✅ 朗读文字
-        speakText(mockAIResponse.content);
-      }
-
-      if (retries >= maxRetries) {
-        clearInterval(poller);
-        setIsSending(false);
-        message.error("AI未及时回复，请稍后重试");
-      }
-    }, interval);
+  
+  const summeryData = async (userId) =>{
+	  var response = await sendMessage({
+		"user_id":userId,
+		"type":"summary",
+		"hash":""
+	  });
+	  flow = response.output.flow
+	  setMessages((prev) => [
+	    ...prev,
+	    {
+	      content: flow,
+	      role: "assistant",
+	      timestamp: new Date(),
+	    },
+	  ]);
+  console.log(111111111111111111111111111111111111)
+	  generatePDF(response.output)
   };
+  
+  const generatePDF = (output) => {
+    // 创建PDF文档
+    const doc = new jsPDF();
+  
+  console.log(555555555555555555555555555)
+    // 1. 添加标题
+    doc.setFontSize(18);
+    doc.text("政务服务办理摘要", 105, 20, { align: "center" });
+  
+    // 2. 添加分类信息
+    doc.setFontSize(14);
+    doc.text(`业务分类: ${output.classify}`, 15, 40);
+  
+  console.log(44444444444444444444)
+    // 3. 添加表格数据
+    doc.setFontSize(12);
+    doc.text("相关信息表格:", 15, 60);
+  console.log(output.tables[0])
+    // 转换表格数据为AutoTable需要的格式
+    const tableData = output.tables[0].map((item) => [
+      item["姓名"] || "",
+      item.age || "",
+      item.gender || "",
+      item.idNumber || "",
+    ]);
+  
+  console.log(3333333333333333333333333333)
+    // 添加表格
+    doc.autoTable({
+      startY: 65,
+      head: [["姓名", "年龄", "性别", "身份证号"]],
+      body: tableData,
+      theme: "grid",
+      headStyles: {
+        fillColor: [22, 160, 133],
+        textColor: 255,
+      },
+    });
+  
+  console.log(7777777777777777777777777777)
+    // 4. 添加办理流程（自动处理换行）
+    doc.setFontSize(12);
+    doc.text("办理流程:", 15, doc.autoTable.previous.finalY + 20);
+  
+    // 处理流程文本的换行
+    const splitText = doc.splitTextToSize(output.flow, 180);
+    doc.text(splitText, 15, doc.autoTable.previous.finalY + 30);
+  
+  console.log(666666666666666666666666666666666666)
+    // 5. 添加生成时间
+    const date = new Date().toLocaleString();
+    doc.setFontSize(10);
+    doc.text(`生成时间: ${date}`, 15, doc.internal.pageSize.height - 10);
+  
+  console.log(2222222222222222222222222222222222)
+    // 保存PDF
+    doc.save(`政务服务摘要_${output.classify}.pdf`);
+  };
+
+
+    // const poller = setInterval(() => {
+    //   retries++;
+
+    //   // 模拟 AI 返回内容（你可以替换为实际 fetch 请求）
+    //   const mockAIResponse = {
+    //     content: "这是AI的回复内容。",
+    //     role: "assistant",
+    //     timestamp: new Date(),
+    //   };
+
+    //   // 模拟第3次轮询收到回复
+    //   if (retries === 3) {
+    //     clearInterval(poller);
+    //     setMessages((prev) => [...prev, mockAIResponse]);
+    //     setIsSending(false); // 启用发送按钮
+
+    //     // 朗读文字
+    //     speakText(mockAIResponse.content);
+    //   }
+
+    //   if (retries >= maxRetries) {
+    //     clearInterval(poller);
+    //     setIsSending(false);
+    //     message.error("AI未及时回复，请稍后重试");
+    //   }
+    // }, interval);
+  
 
   //将文字转语音
   function speakText(text) {
@@ -247,7 +435,7 @@ const ChatModule = ({ onSend, initialMessages = [], getTitle }) => {
             type="primary"
             icon={<SendOutlined />}
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isSending} // 添加 isSending 条件
             className={styles.sendButton}
           >
             发送

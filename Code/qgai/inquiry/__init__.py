@@ -1,3 +1,3 @@
-from inquiry.Inquiring_and_Getanswer import Inquiring,Get_Answer
+from inquiry.Inquiry_and_GetAnswer import inquire,get_answer
 
-__all__=['Inquiring','Get_Answer']
+__all__=['inquire','get_answer']

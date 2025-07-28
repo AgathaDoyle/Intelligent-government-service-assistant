@@ -9,6 +9,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { registerUser } from "../../store/slice/userSlice.js";
+import { encryptData } from "../../utils/encrypt.js";
 
 const RegisterForm = () => {
   const [form] = Form.useForm();
@@ -52,7 +53,19 @@ const RegisterForm = () => {
     setLoading(true);
     try {
       // await new Promise((resolve) => setTimeout(resolve, 1000));
-      const result = await dispatch(registerUser(values)).unwrap();
+	  console.log(values)
+      const result = await dispatch(
+        registerUser({
+          name: encryptData(values.name, "1234567890123456"),
+          gender: encryptData(values.gender, "1234567890123456"),
+          nationality: encryptData(values.nationality, "1234567890123456"),
+          email: encryptData(values.email, "1234567890123456"),
+          phone: encryptData(values.phone, "1234567890123456"),
+          password: encryptData(values.password, "1234567890123456"),
+          idCard: encryptData(values.idCard, "1234567890123456"),
+        })
+      ).unwrap();
+      console.log("注册成功", result);
       message.success("注册成功，请收集人脸信息");
       navigate("/Collect");
     } catch (error) {
@@ -222,24 +235,6 @@ const RegisterForm = () => {
             ]}
           >
             <Input.Password prefix={<LockOutlined />} placeholder="密码" />
-          </Form.Item>
-
-          <Form.Item
-            name="password"
-            dependencies={["password"]}
-            rules={[
-              { required: true, message: "请确认密码" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(new Error("两次输入的密码不一致"));
-                },
-              }),
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="确认密码" />
           </Form.Item>
 
           <Form.Item>

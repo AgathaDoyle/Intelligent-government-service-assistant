@@ -20,9 +20,9 @@ import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import MultinomialNB  # 导入贝叶斯分类器
 
-from Predict import single_img_bin_predict
-from model_loader import get_components
-from utils.face_utils import (
+from face.Predict import single_img_bin_predict
+from face.model_loader import get_components
+from face.utils.face_utils import (
     bin_to_image, preprocess_face,
     extract_features
 )
@@ -159,7 +159,7 @@ def cv2_train(imgs_bin, user_id, min_acc=0.6):
     start_time = time.time()
     logger.info('开始提取特征并训练贝叶斯模型，请耐心等待....')
 
-    new_features, new_labels = get_feature_and_labels(imgs_bin, user_id)
+    new_features, new_labels =  (imgs_bin, user_id)
 
     if not new_features or not new_labels:
         logger.error("没有有效的训练数据，无法进行训练")

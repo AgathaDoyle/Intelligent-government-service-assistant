@@ -28,7 +28,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   function (response) {
     // 对响应数据做点什么
-
+    //如果数据格式是加密的，可以在这里解密
     return response;
   },
   function (error) {

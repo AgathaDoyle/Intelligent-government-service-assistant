@@ -5,3 +5,7 @@
 *.npy
 *.npy
 /Code/qgai/.idea
+/Code/front/node_modules
+/Code/qgai/testpng
+/Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__
+/Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__

@@ -7,9 +7,9 @@ from transformers import BertModel, BertConfig, BertTokenizerFast
 from transformers import get_linear_schedule_with_warmup
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from qa_data import qa_data
+from inquiry.qa_data import qa_data
 
-tokenizer = BertTokenizerFast.from_pretrained('bert-base-chinese')
+__all__=['get_answer','inquire']
 
 MAX_LEN   = 256
 D_MODEL   = 256
@@ -21,49 +21,8 @@ PAD_ID    = 0
 
 TF_ENABLE_ONEDNN_OPTS=0
 
-def encode_qa_pair(tokenizer, question, context, answer_text):
-    enc = tokenizer.encode_plus(
-        question, context,
-        max_length=MAX_LEN,
-        truncation='only_second',
-        return_offsets_mapping=True,
-        padding='max_length',
-    )
-    offset = enc['offset_mapping']
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 找到答案的字符级起止
-    ans_char_start = context.find(answer_text)
-    if ans_char_start == -1:
-        raise ValueError(f"答案不在上下文中: {answer_text} vs {context}")
-
-    ans_char_end = ans_char_start + len(answer_text)
-
-    # 精确映射到 token
-    token_start = token_end = 0
-    for idx, (s, e) in enumerate(offset):
-        if s <= ans_char_start < e:
-            token_start = idx
-        if s < ans_char_end <= e:
-            token_end = idx
-            break
-
-    # 检查 token 是否正确
-    tokens = tokenizer.convert_ids_to_tokens(enc['input_ids'])
-    predicted = ''.join(tokens[token_start:token_end+1]).replace('##', '')
-    if predicted != answer_text:
-        print(f" token 映射错误: {predicted} != {answer_text}")
-
-    return {
-        'input_ids': torch.tensor(enc['input_ids']),
-        'start_pos': torch.tensor(token_start),
-        'end_pos': torch.tensor(token_end),
-    }
-
-def collate_fn(batch):
-    input_ids = torch.stack([item['input_ids'] for item in batch])
-    start_pos = torch.stack([item['start_pos'] for item in batch])
-    end_pos = torch.stack([item['end_pos'] for item in batch])
-    return input_ids, start_pos, end_pos
 
 
 
@@ -77,77 +36,12 @@ class QADataset(Dataset):
 
     def __getitem__(self, idx):
         question, context, answer = self.data[idx]
-        encoded = encode_qa_pair(self.tokenizer, question, context, answer)
+        encoded = encode_qa_pair(question, context, answer,self.tokenizer)
         return {
             'input_ids': encoded['input_ids'],
             'start_pos': encoded['start_pos'],
             'end_pos': encoded['end_pos']
         }
-
-def predict(model, tokenizer, question, context):
-    id_match = ""
-    answer = ""
-    id_match = re.search(r'\d{17}[\dXx]', context)
-    if id_match:
-        return id_match.group(0)
-    if "民族" in question:
-        match = re.search(
-            r'汉族|回族|藏族|维吾尔族|壮族|苗族|彝族|布依族|朝鲜族|满族|侗族|瑶族|白族|土家族|哈尼族|哈萨克族|傣族|黎族|傈僳族|佤族|畲族|高山族|拉祜族|水族|东乡族|纳西族|景颇族|柯尔克孜族|土族|达斡尔族|仫佬族|羌族|布朗族|撒拉族|毛南族|仡佬族|锡伯族|阿昌族|普米族|塔吉克族|怒族|乌孜别克族|俄罗斯族|鄂温克族|德昂族|保安族|裕固族|京族|塔塔尔族|独龙族|鄂伦春族|赫哲族|门巴族|珞巴族|基诺族',
-            context
-        )
-        return match.group(0) if match else ""
-    if "申领原因" in question:
-        return context
-
-
-
-    device = next(model.parameters()).device
-    enc = tokenizer.encode_plus(
-    question,
-    context,
-    max_length=MAX_LEN,
-    truncation='only_second',
-    return_offsets_mapping=True,
-    padding='max_length',
-    return_tensors='pt'
-    )
-
-    # 准备所有必需输入
-    input_ids = enc['input_ids'].to(device)
-    attention_mask = enc['attention_mask'].to(device)
-    token_type_ids = torch.zeros_like(input_ids)  # EnhancedQAModel需要
-
-    # 生成token_type_ids（区分问题和上下文）
-    sep_pos = (input_ids == tokenizer.sep_token_id).nonzero(as_tuple=False)[-2, 1].item()
-    context_start = sep_pos + 1
-    token_type_ids[:, context_start:] = 1
-
-    model.eval()
-    with torch.no_grad():
-        start_logits, end_logits = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids
-        )
-
-        # 调试信息
-
-        # 屏蔽问题和padding部分
-    context_start = sep_pos + 1
-    mask = (attention_mask == 0) | (torch.arange(MAX_LEN).to(device) < context_start)
-    start_logits[mask] = -1e9
-    end_logits[mask] = -1e9
-
-        # 获取预测位置
-    start = start_logits.argmax(dim=1).item()
-    end = end_logits.argmax(dim=1).item()
-    print("start_logits.argmax():", start_logits.argmax().item())
-    print("end_logits.argmax():", end_logits.argmax().item())
-    print("context_start:", context_start)
-
-    answer_tokens = input_ids[0, start:end + 1]
-    answer = tokenizer.decode(answer_tokens, skip_special_tokens=True)
-    return answer.replace(" ", "").replace("##","")
 
 class EnhancedQAModel(nn.Module):
     def __init__(self, model_name='bert-base-chinese',
@@ -225,7 +119,6 @@ class EnhancedQAModel(nn.Module):
 
         return start_logits, end_logits
 
-
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2.0, reduction='mean'):
         super().__init__()
@@ -245,6 +138,61 @@ class FocalLoss(nn.Module):
             return loss.sum()
         return loss
 
+enhanced_model = EnhancedQAModel(
+    model_name="bert-base-chinese",
+    hidden_dropout_prob=0.2,
+    attention_probs_dropout_prob=0.2,
+    num_additional_layers=2,
+    use_focal_loss=True
+).to(device)  # 确保指定设备(GPU)
+# 模型加载
+# 从当前目录加载
+tokenizer = BertTokenizerFast.from_pretrained('bert-base-chinese')
+enhanced_model.load_state_dict(torch.load("inquiry/QG3_enhanced_qa_model.pth",weights_only=True))
+
+def encode_qa_pair(question,context, answer_text,tokenizer=tokenizer):
+    enc = tokenizer.encode_plus(
+        question, context,
+        max_length=MAX_LEN,
+        truncation='only_second',
+        return_offsets_mapping=True,
+        padding='max_length',
+    )
+    offset = enc['offset_mapping']
+
+    # 找到答案的字符级起止
+    ans_char_start = context.find(answer_text)
+    if ans_char_start == -1:
+        raise ValueError(f"答案不在上下文中: {answer_text} vs {context}")
+
+    ans_char_end = ans_char_start + len(answer_text)
+
+    # 精确映射到 token
+    token_start = token_end = 0
+    for idx, (s, e) in enumerate(offset):
+        if s <= ans_char_start < e:
+            token_start = idx
+        if s < ans_char_end <= e:
+            token_end = idx
+            break
+
+    # 检查 token 是否正确
+    tokens = tokenizer.convert_ids_to_tokens(enc['input_ids'])
+    predicted = ''.join(tokens[token_start:token_end + 1]).replace('##', '')
+    if predicted != answer_text:
+        print(f" token 映射错误: {predicted} != {answer_text}")
+
+    return {
+        'input_ids': torch.tensor(enc['input_ids']),
+        'start_pos': torch.tensor(token_start),
+        'end_pos': torch.tensor(token_end),
+    }
+
+def collate_fn(batch):
+    input_ids = torch.stack([item['input_ids'] for item in batch])
+    start_pos = torch.stack([item['start_pos'] for item in batch])
+    end_pos = torch.stack([item['end_pos'] for item in batch])
+    return input_ids, start_pos, end_pos\
 
 def train_enhanced_model():
     # 超参数配置
@@ -358,21 +306,7 @@ def train_enhanced_model():
     return model
 
 
-# 使用示例
-if __name__ == "__main__":
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    enhanced_model = EnhancedQAModel(
-        model_name="bert-base-chinese",
-        hidden_dropout_prob=0.2,
-        attention_probs_dropout_prob=0.2,
-        num_additional_layers=2,
-        use_focal_loss=True
-    ).to(device)  # 确保指定设备(GPU)
-    # 模型加载
-    # 从当前目录加载
-    tokenizer = BertTokenizerFast.from_pretrained('bert-base-chinese')
-    enhanced_model.load_state_dict(torch.load("QG3_enhanced_qa_model.pth"))
     # train_enhanced_model().to(device)
     # 测试增强后的模型
     test_questions = [
@@ -416,3 +350,83 @@ if __name__ == "__main__":
     for q, c in test_questions:
         pred = predict(enhanced_model, tokenizer, q, c)
         print(f"Q: {q}\nC: {c}\nA: {pred}\n")
+
+def get_answer(answer, key_q, model=enhanced_model, tokenizer=tokenizer):
+    id_match = ""
+    id_match = re.search(r'\d{17}[\dXx]', answer)
+    if id_match:
+        return id_match.group(0)
+    if "民族" in key_q:
+        match = re.search(
+            r'汉族|回族|藏族|维吾尔族|壮族|苗族|彝族|布依族|朝鲜族|满族|侗族|瑶族|白族|土家族|哈尼族|哈萨克族|傣族|黎族|傈僳族|佤族|畲族|高山族|拉祜族|水族|东乡族|纳西族|景颇族|柯尔克孜族|土族|达斡尔族|仫佬族|羌族|布朗族|撒拉族|毛南族|仡佬族|锡伯族|阿昌族|普米族|塔吉克族|怒族|乌孜别克族|俄罗斯族|鄂温克族|德昂族|保安族|裕固族|京族|塔塔尔族|独龙族|鄂伦春族|赫哲族|门巴族|珞巴族|基诺族',
+            answer
+        )
+        return match.group(0) if match else ""
+    if "申领原因" in key_q:
+        return answer
+
+
+
+    device = next(model.parameters()).device
+    enc = tokenizer.encode_plus(
+    key_q,
+    answer,
+    max_length=MAX_LEN,
+    truncation='only_second',
+    return_offsets_mapping=True,
+    padding='max_length',
+    return_tensors='pt'
+    )
+
+    # 准备所有必需输入
+    input_ids = enc['input_ids'].to(device)
+    attention_mask = enc['attention_mask'].to(device)
+    token_type_ids = torch.zeros_like(input_ids)  # EnhancedQAModel需要
+
+    # 生成token_type_ids（区分问题和上下文）
+    sep_pos = (input_ids == tokenizer.sep_token_id).nonzero(as_tuple=False)[-2, 1].item()
+    context_start = sep_pos + 1
+    token_type_ids[:, context_start:] = 1
+
+    model.eval()
+    with torch.no_grad():
+        start_logits, end_logits = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids
+        )
+
+        # 调试信息
+
+        # 屏蔽问题和padding部分
+    context_start = sep_pos + 1
+    mask = (attention_mask == 0) | (torch.arange(MAX_LEN).to(device) < context_start)
+    start_logits[mask] = -1e9
+    end_logits[mask] = -1e9
+
+        # 获取预测位置
+    start = start_logits.argmax(dim=1).item()
+    end = end_logits.argmax(dim=1).item()
+    print("start_logits.argmax():", start_logits.argmax().item())
+    print("end_logits.argmax():", end_logits.argmax().item())
+    print("context_start:", context_start)
+
+    answer_tokens = input_ids[0, start:end + 1]
+    answer = tokenizer.decode(answer_tokens, skip_special_tokens=True)
+    return answer.replace(" ", "").replace("##","")
+
+def inquire(data_dict):
+    """
+    检查字典中是否有缺失字段，并返回提示信息
+    参数:
+        data_dict: 要检查的字典数据
+        required_fields: 必填字段列表
+    返回:
+        list: 缺失字段的提示信息列表，若无缺失则返回空列表
+    """
+    for field in data_dict.keys():
+        # 检查字段是否存在或值为空（None/空字符串/空列表等）
+        if data_dict[field] is None or data_dict[field] == "":
+            return {field: f"请问您的「{field}」是什么？"}
+
+    return None
