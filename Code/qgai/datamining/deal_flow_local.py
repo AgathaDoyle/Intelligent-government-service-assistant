@@ -90,6 +90,3 @@ def debug():
 
     output = deal_flow_l(user_input, raw_text, cat_gril=True)
     print(output)
-
-
-debug()

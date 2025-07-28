@@ -4,3 +4,4 @@
 *.pkl
 *.npy
 *.npy
+/Code/qgai/.idea
