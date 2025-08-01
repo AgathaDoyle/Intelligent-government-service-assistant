@@ -1,101 +1,159 @@
 # ================================
 # @File         : face_fetcher.py
-# @Time         : 2025/07/24
+# @Time         : 2025/07/30
 # @Author       : Yingrui Chen
-# @description  : 人脸捕捉，测试使用
+# @description  : 人脸检测函数
+#                 输入：二进制、三通道图像数据
+#                 输出：人脸CV图像，没有人脸则返回None
 # ================================
 
-import pickle
+import numpy as np
+from model_loader import get_components
+from utils.face_utils import img_to_bin
 
-import cv2
-import os
-from utils.face_utils import cv_img_to_bin
+# 加载模型组件
+components = get_components()
+models = components['models']
+face_detectors = models['detectors']
+logger = components['logger']
 
-save_dir = "facedata"
-if not os.path.exists(save_dir):
-    try:
-        os.makedirs(save_dir, exist_ok=True)
-        print(f"创建保存目录: {save_dir}")
-    except Exception as e:
-        print(f"无法创建保存目录: {e}")
-        exit()
+# 1、尺寸阈值设置 (宽度, 高度)
+# 小于该阀值的图片会自动调整图片大小
+THRESHOLD_SIZE = (800, 800)
 
-# 调用摄像头
-cap = cv2.VideoCapture(0)
-if not cap.isOpened():
-    print("无法打开摄像头")
-    exit()
+# 2、人脸抓取参数（ >1 ）
+# 数值越大，识别准确率越低，速度越快
+# 数值越小，识别准确率越高，速度越慢（自己看着办）
+SCALE_FACTOR = 1.1
 
-# 加载人脸检测器
-face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-if face_detector.empty():
-    print("无法加载人脸检测器")
-    exit()
+# 3、图片旋转参数
+ROTATION_STEP = 15
 
-face_id = input('请输入用户ID: ')
-print('开始采集人脸数据，请看向摄像头...')
 
-count = 0
-imgs_bin = []
+def rotate_bound(image, angle):
+    """
+    旋转图像并保持完整内容不被裁剪
 
-while True:
-    # 从摄像头读取图片
-    success, img = cap.read()
-    if not success:
-        print("无法获取图像")
-        break
+    :param image:   CV图像
+    :param angle:   旋转角度
+    :return:        旋转后的CV格式的图像
+    """
+    if angle % 360 == 0:
+        return image
 
-    # 转为灰度图片
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # 获取图像尺寸并确定中心点
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
 
-    # 检测人脸
-    faces = face_detector.detectMultiScale(gray, 1.3, 5)
+    # 获取旋转矩阵（应用负角度实现顺时针旋转）
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
 
-    for (x, y, w, h) in faces:
-        # 绘制矩形框
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        count += 1
+    # 计算旋转后图像的新尺寸
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
 
-        # 保存图像
-        # img_path = os.path.join(save_dir, f"{face_id}_{count}.jpg")
-        try:
-            img_bin = cv_img_to_bin(img)
-            imgs_bin.append(img_bin)
-            # cv2.imwrite(img_path, gray[y:y+h, x:x+w])
-            print(f"已保存 {count} 张图片")
-        except Exception as e:
-            print(f"保存图片失败: {e}")
+    # 调整旋转矩阵以补偿平移
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
 
-        cv2.imshow('image', img)
+    # 执行旋转并返回结果
+    return cv2.warpAffine(image, M, (nW, nH), borderMode=cv2.BORDER_CONSTANT, borderValue=[255, 255, 255])
 
-    # 按键处理
-    k = cv2.waitKey(1)
-    if k == 27:  # ESC键退出
-        break
-    elif count >= 50:  # 采集10张后退出
-        break
 
-# 清理资源
-cap.release()
-cv2.destroyAllWindows()
-print(f"采集完成，共保存 {count} 张图片")
+def new_resize(image):
+    """
+    智能调整CV图像，输出正方形的图片，小于尺寸阀值的用皮肤色填充
 
-# 保存imgs_bin
-if imgs_bin:
-    try:
-        # 保存所有二进制图像数据到一个pickle文件
-        bin_file_path = os.path.join(save_dir, f"face_{face_id}_bin_data.pkl")
-        with open(bin_file_path, 'wb') as f:
-            pickle.dump({
-                'face_id': face_id,
-                'count': count,
-                'images': imgs_bin
-            }, f)
-        print(f"已将 {count} 张人脸二进制数据保存到 {bin_file_path}")
+    :param image:   CV图像
+    :return:        处理后更容易识别到人脸的CV图像
+    """
+    orig_height, orig_width = image.shape[:2]
+    max_width = max(orig_width, THRESHOLD_SIZE[0])
+    max_height = max(orig_height, THRESHOLD_SIZE[1])
+    canvas_size = max(max_width, max_height)
 
-        # 可选：调用训练函数，使用采集的数据进行训练
-        # Train_v2.train()
-    except Exception as e:
-        print(f"保存二进制图像数据失败: {e}")
-else:
-    print("没有可保存的人脸二进制数据")
+    canvas = np.full((canvas_size, canvas_size, 3), 0, dtype=np.uint8)
+
+    x_offset = (canvas_size - orig_width) // 2
+    y_offset = (canvas_size - orig_height) // 2
+    canvas[y_offset:y_offset + orig_height, x_offset:x_offset + orig_width] = image
+
+    return canvas
+
+
+def detect_faces_in_image(image):
+    """
+    在单张图像中检测人脸
+
+    :param image:   一张CV图像
+    :return:        一个包含人脸位置数据的列表，若没有识别到人脸，则返回None
+    """
+    detected_faces = []
+    for detector in face_detectors:
+        faces = detector.detectMultiScale(
+            image,
+            scaleFactor=SCALE_FACTOR,
+            minNeighbors=5,
+            minSize=(30, 30),
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+
+        detected_faces.extend(faces)
+
+    return None if len(detected_faces) == 0 else detected_faces
+
+
+def face_fetcher(image_binary):
+    """
+    检测图中的人脸区域，返回区域边缘坐标
+    若没有在图中发现人脸，则返回None
+
+    :param image_binary:    图像二进制格式
+    :return:                人脸CV图像
+    """
+    # 解码图像
+    original_image = cv2.imdecode(
+        np.frombuffer(image_binary, np.uint8),
+        cv2.IMREAD_COLOR
+    )
+    # 首次检测
+    detected_faces = detect_faces_in_image(original_image)
+
+    # 首次检测就发现人脸，返回图中最大的人脸
+    if detected_faces is not None:
+        (x, y, w, h) = max(detected_faces, key=lambda f: f[2] * f[3])
+        face_area = original_image[y:y + h, x:x + w]
+        return face_area
+    else:
+        logger.info("首次检测没有发现人脸，自适应调整图像... ...")
+        processed_image = new_resize(original_image)
+
+        rotation_range = range(0, 360 - ROTATION_STEP, ROTATION_STEP)
+        for angle in rotation_range:
+            rotated_image = rotate_bound(processed_image, angle)
+            detected_faces = detect_faces_in_image(rotated_image)
+            if detected_faces is not None:
+                (x, y, w, h) = max(detected_faces, key=lambda f: f[2] * f[3])
+                face_area = rotated_image[y:y + h, x:x + w]
+                return face_area
+
+        return None
+
+
+if __name__ == '__main__':
+    import cv2
+
+    pil_image = cv2.imread("./facedata/testt.jpg")
+    image_bin = img_to_bin(pil_image)
+
+    import time
+    start = time.time()
+    face_a = face_fetcher(image_bin)
+    end = time.time()
+    print("人脸捕捉总共耗时：", end - start)
+
+    cv2.imshow("face_a", face_a)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
