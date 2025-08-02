@@ -5,11 +5,13 @@
 # @description  : 人脸处理公共工具类
 # ================================
 
+import struct
 import numpy as np
 import cv2
 from PIL import Image
 from io import BytesIO
 import logging
+from cryptography.fernet import Fernet
 
 
 def bin_to_image_array(bin_data):
@@ -91,5 +93,61 @@ def normalize_features(features):
     return features
 
 
+def generate_key():
+    return Fernet.generate_key()
+
+
+def encrypt_feature(key, array):
+    """高效加密NumPy数组"""
+    # 获取数组基本信息（形状和数据类型）
+    shape = array.shape
+    dtype = array.dtype
+
+    # 将形状信息转换为字节（使用struct打包）
+    # 先写入维度数量，再写入各维度大小
+    shape_bytes = struct.pack(f'>I{len(shape)}Q', len(shape), *shape)
+
+    # 写入数据类型信息
+    dtype_bytes = dtype.str.encode('utf-8') + b'\x00'  # 以空字节结尾作为分隔符
+
+    # 获取数组数据的字节表示（直接使用内存缓冲区）
+    data_bytes = array.tobytes()
+
+    # 组合所有数据
+    combined = shape_bytes + dtype_bytes + data_bytes
+
+    # 加密
+    fernet = Fernet(key)
+    return fernet.encrypt(combined)
+
+
+def decrypt_feature(key, encrypted_data):
+    """高效解密为NumPy数组"""
+    # 解密
+    fernet = Fernet(key)
+    decrypted = fernet.decrypt(encrypted_data)
+
+    # 解析形状信息
+    # 先读取维度数量（4字节无符号整数，大端序）
+    dim_count = struct.unpack('>I', decrypted[:4])[0]
+    shape_end = 4 + dim_count * 8  # 每个维度用8字节存储
+    shape = struct.unpack(f'>{dim_count}Q', decrypted[4:shape_end])
+
+    # 解析数据类型
+    dtype_end = decrypted.find(b'\x00', shape_end)
+    dtype = np.dtype(decrypted[shape_end:dtype_end].decode('utf-8'))
+
+    # 解析数据部分
+    data_bytes = decrypted[dtype_end + 1:]  # +1跳过空字节分隔符
+
+    # 从字节重建数组
+    return np.frombuffer(data_bytes, dtype=dtype).reshape(shape)
+
+
+def get_laplacian_matrix(feature, loc=0, scale=1):
+    laplacian_matrix = np.random.laplace(loc=loc, scale=scale, size=feature.shape)
+
+
 if __name__ == "__main__":
-    pass
+    k = generate_key()
+    print(k)
