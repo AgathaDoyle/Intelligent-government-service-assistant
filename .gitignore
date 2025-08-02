@@ -1,11 +1,12 @@
 /Code/qgai/server/__pycache__
-*.pyc
 /Code/qgai/datamining/__pycache__
-*.pkl
-*.npy
-*.npy
 /Code/qgai/.idea
 /Code/front/node_modules
 /Code/qgai/testpng
 /Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__
-/Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__
+
+*.pkl
+*.npy
+*.pyc
+*.env
+*.pth

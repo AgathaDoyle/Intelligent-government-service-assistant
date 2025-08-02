@@ -5,7 +5,7 @@ __all__=['translate','detranslate']
 
 
 def translate(vocab,lang="zh-cn"):
-    lang_dic = json.loads(open(os.path.join("lang",lang+".json"),'r',encoding='utf-8').read())
+    lang_dic = json.loads(open(os.path.join("lang",lang+".lang"),'r',encoding='utf-8').read())
 
     if vocab not in lang_dic:
         return None
