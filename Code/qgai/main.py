@@ -1,6 +1,8 @@
-import server
+from server import *
 
 
 if __name__ == '__main__':
-    server.log("Welcome to the python API of AI for government assistants", __name__)
-    server.run()
+    log("Welcome to the python API of AI for government assistants", __name__)
+    http.run()
+    socket_process.run()
+    socket_utils.run()
