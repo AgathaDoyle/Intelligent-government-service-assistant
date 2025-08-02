@@ -5,8 +5,6 @@
 /Code/qgai/testpng
 /Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__
 
-*.pkl
-*.npy
-*.pyc
-*.env
-*.pth
+/Code/qgai/inquiry/QuestionAndAnswer(On-Premises&Revised)/__pycache__
+.DS_Store
+Code/qgai/face/face_trainer_bayes/.DS_Store
