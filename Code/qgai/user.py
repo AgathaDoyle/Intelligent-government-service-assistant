@@ -28,6 +28,13 @@ class TableFiller:
         #当前填写表格的指针序号
         self.__pointer = 0
 
+    def __setitem__(self,key,value):
+        """
+        填写当前指针指向的表格
+        """
+        self.__tables[self.__pointer][key]=value
+
+
     @property
     def table(self):
         """
@@ -77,7 +84,7 @@ class TableFiller:
     def reset_pointer(self):
         self.__pointer=0
 
-    def export_table(self):
+    def next_table(self):
         """
         导出当前所填表，并将pointer换到下一张表
         :return:
@@ -393,29 +400,30 @@ class User:
         if self.__tables_filler is None:
             raise Exception("please activate get_flow at least once first")
         return self.__tables_filler
-    def fill_in_table(self,table: dict):
+    def fill_in_table(self):
         """
         此方法将会把现在用户已有的所有，表格需要的信息填入表中，将会对传入的参数做出改变
         :param table: 所填表格，需要填写的值为None
         :return: 返回一个填完的表格
         """
-        for key in table:
-            #跳过已填的值
-            if not table[key] == '':
-                continue
+        #遍历表格中的键
+        for key in self.tables_filler.table:
+
             #遍历特殊标记
             for mark in datamining.table_mark:
                 if mark is None:
                     break
+            #跳过已填的值
+            if not self.tables_filler.table[key] is None and not self.tables_filler.table[key] == '':
+                continue
 
             #如果有对应的键值，填充表格
             if key in self.info:
-                table[key]=self.info[key]
-        print(table)
-        return table
+                self.tables_filler[key]=self.info[key]
+        return
     def export_tables(self):
         """
-        导出表格为前端接口的形式
+        导出所有表格为前端接口的形式
         """
         tables = []
         for table in self.tables:
@@ -557,21 +565,28 @@ class User:
         """
         while True:
             try:
-                inquire = await self.__inquire()
-                if inquire is None:
-                    await hoster.asend("")
+                # 已完成所有表格
+                if self.tables_filler.is_finish:
+                    await hoster.asend("")                          # send
                     return True
+                else:
+                    #获取问题
+                    inquire = await self.__inquire()
+                    #完成此表格，下一张
+                    if inquire is None:
+                        self.tables_filler.next_table()
+                        continue
+                    else:
+                        #发送问题
+                        key,question = inquire
+                        await hoster.asend(question)                # send
 
+                        #获取回答
+                        answer = await hoster.__anext__()           # recieve
+                        value = await self.__get_answer(answer,key)
+                        #填写答案
+                        self[key] = value
 
-                key,question = inquire
-
-
-                await hoster.asend(question)
-
-                answer = await hoster.__anext__()
-                value = await self.__get_answer(question, answer)
-
-                self[key] = value
             except StopIteration:
                 return False
 
@@ -581,18 +596,20 @@ class User:
         :param hoster:websocket
         """
         fetchers = []
-        async for img in hoster:
+        #接收图片
+        async for img in hoster:                                    # recieve
+            #截获数量足够
             if len(fetchers)>50:
                 await self.__train_face(user_id,fetchers)
-                await hoster.asend("success")
+                await hoster.asend("success")                       # send
                 return True
-            #提取特征部分
-            fetcher = face.face_fetcher(img)
-            #未检测到人脸
-            if fetcher is None:
-                await hoster.asend("continue")
             else:
-                fetchers.append(fetcher)
+                #提取特征部分
+                fetcher = face.face_fetcher(img)
+                #检测到人脸，加入特征集
+                if fetcher is not None:
+                    fetchers.append(fetcher)
+                await hoster.asend("continue")                      # send
 
 
 

@@ -24,6 +24,7 @@ hash_obj = hashlib.sha256()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    #跨域配置
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -64,36 +65,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "hash": req_hash
         }
 
-
-
         # 握手时创建新用户
         if user_id not in user_dic and req_type == "handshake":
             log("(%s)a new user handshake" % ip)
 
+            # 初始化用户+填入信息，开启异步循环
             user = User(request["info"],LoopBed().looping_on_new_thread())
             user_dic[user_id] = user
-            user = user_dic[user_id]
 
-
+            #响应
+            response["type"] = "handshake"
+            response["message"] = "success"
+            return response
 
         # 在握手前使用，报错
         if user_id not in user_dic:
-            response["type"] = "error"
-            response["message"]="use this user_in before handshake"
-            return response
+            return error_response(user_id,req_hash,"use this user_in before handshake")
+
+
 
 
         # 获取用户
         user = user_dic[user_id]
-        # 初始化握手响应
-        if req_type == "handshake":
-            log("handshake----user_id:%s" % user_id)
+        # 初始化分类响应
+        if req_type == "classify":
+            log("classify----user_id:%s" % user_id)
 
+            # 调用初始化异步模块
             user.init(request["input"]["text"])
+            # 未完成
             if not user.init.done:
                 return processing_response(user_id, req_hash)
+            #完成，响应
             else:
-                response["type"] = "handshake"
+                response["type"] = "classify"
                 response["classify"] = user.bus_type
                 response["flow"] = user.flow
                 user.classify(request["input"]["text"])
@@ -111,7 +116,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             response["type"] = "summary"
             response["output"] = {
-                "tables":user.tables_filler.tables,
+                "tables":user.export_tables(),
                 "classify":user.bus_type,
                 "flow":flow
             }
